@@ -3,6 +3,7 @@ import time
 import tkinter as tk
 import threading 
 import queue
+from tkinter import filedialog
 
 #global variables
 ser = None;
@@ -11,16 +12,17 @@ root.title("Wax Printer v1.0")
 filter_temperature = ''
 serial_data = ''
 update_period =5 
+filename = ''
 
 #Importing of Gcode file:
-def importGcode():
+def importGcode(fileToRead):
 
     def file_read(fileName):
         with open(fileName) as f:
             content_list = f.readlines()
             return content_list
 
-    fileContents = file_read("SpecificationDesign.ngc")
+    fileContents = file_read(fileToRead)
 
     #remove spaces and line returns from .ngf file
     fileContents = [i.replace(' ','') for i in fileContents]
@@ -34,13 +36,6 @@ def importGcode():
 
     print(fileContents)
     #Make sure that X, Y, I and J start with + or - 
-
-    def addPositiveSign(item):
-        for char in 'XYIJ':
-            item = item.replace(char,f'{char}+')
-        return item.replace('+-','-')
-
-    fileContents = [addPositiveSign(item) for item in fileContents]
 
     print(fileContents)
     #Format each command to a 32 byte string
@@ -56,7 +51,7 @@ def importGcode():
 def connect():
 
     global ser
-    port = 'COM8'
+    port = 'COM4'
     baud = 115200
     bytes =8
     time=2
@@ -74,12 +69,16 @@ def get_data():
 
     while True:
         try:
-            serial_Data = ser.readline().decode()
+            serial_Data = ser.readline().decode(errors='replace')
+            if(serial_Data.startswith('W') and len(serial_Data)!=0):
+                tempVal.set(serial_Data[1:])
+                print(tempVal.get())
 
-            if(serial_Data.startswith('T') and len(serial_Data)!=0):
-                filter_temperature = serial_Data
-                filter_temperature = filter_temperature[1:]
-                print(filter_temperature)
+            elif(serial_Data.startswith('B') and len(serial_Data)!=0):
+                tempValBed.set(serial_Data[1:])
+            else:
+                tempVal.set("--")
+                tempValBed.set("--")
         except TypeError:
             pass
 
@@ -92,8 +91,6 @@ def update_gui():
     new = time.time()
 
     while(1):
-        
-        temperatureLabel.configure(text=filter_temperature).place(x=50,y=30)
 
         if time.time() - new >= update_period:
             new = time.time()
@@ -131,24 +128,77 @@ def homeY():
     command = "homy".ljust(32,'#')
     send(format(('{}').format(command)).encode('ascii'))
     print("sent homy command")
+
+def homeZ():
+    command = "homz".ljust(32,'#')
+    send(format(('{}').format(command)).encode('ascii'))
+    print("sent homz command")
+
+def drawWax():
+    command = "draw".ljust(32,'#')
+    send(format(('{}').format(command)).encode('ascii'))
+    print("sent drawWax command")
+
+def stepZUp():
+    command = "movz+".ljust(32,'#')
+    send(format(('{}').format(command)).encode('ascii'))
+    print("sent move Z up")
+
+def stepZDown():
+    command = "movz-".ljust(32,'#')
+    send(format(('{}').format(command)).encode('ascii'))
+    print("sent move Z down")
+
+def spec1():
+    command = "spec1".ljust(32,'#')
+    send(format(('{}').format(command)).encode('ascii'))
+    print("sent spec1")
+
+def bed():
+    command = "bed".ljust(32,'#')
+    send(format(('{}').format(command)).encode('ascii'))
+    print("sent bed")
        
+def browseFiles():
+    global filename
+    filename = filedialog.askopenfilename(initialdir = "/", title = "Select a file", filetypes=(("ngc files", "*.ngc"),("all files", "*.*")))
 if __name__ == "__main__":
     #put your widget placements here
     ### WIDGETS ###
 
-    startButton = tk.Button(text="Start",command=importGcode).place(x=10, y=10)
-    heatButton = tk.Button(text="Heat",command=startHeating).place(x=50, y=10)
-    homeXButton = tk.Button(text="Home X",command=homeX).place(x=200, y=10)
-    homeYButton = tk.Button(text="Home Y",command=homeY).place(x=200, y=40)
-
-    tempVal = tk.StringVar()
-    temperatureLabel = tk.Label(text="Temp(degC):",textvariable = tempVal).place(x=50,y=30)
-
-    ### WIDGETS END ###
-
     guiThread = threading.Thread(target = update_gui)
     guiThread.daemon = True
     guiThread.start()
+
+    startButton = tk.Button(text="Print",command=lambda: importGcode(filename))
+    startButton.place(x=70, y=10)
+    browseButton = tk.Button(text="Browse",command=browseFiles)
+    browseButton.place(x=10, y=10)
+    heatButton = tk.Button(text="Heat Wax",command=startHeating,activebackground='green').place(x=120, y=10)
+    homeXButton = tk.Button(text="Home X",command=homeX).place(x=200, y=10)
+    homeYButton = tk.Button(text="Home Y",command=homeY).place(x=200, y=40)
+    homeZButton = tk.Button(text="Home Z",command=homeZ).place(x=200, y=70)
+    drawWax = tk.Button(text="Draw Wax",command=drawWax).place(x=300, y=10)
+    bedHeater = tk.Button(text="Heat bed",command=bed).place(x=10, y=70)
+
+    # spec1Button = tk.Button(text="Specification 1",command=spec1).place(x=300, y=100)
+    # spec2Button = tk.Button(text="Specification 2",command=drawWax).place(x=300, y=140)
+    # spec3Button = tk.Button(text="Specification 3",command=drawWax).place(x=300, y=180)
+
+    zDown = tk.Button(text="+1",command=stepZUp)
+    zDown.place(x=380, y=10)
+    zUP = tk.Button(text="-1",command=stepZDown)
+    zUP.place(x=380, y=40)
+
+    tempVal = tk.StringVar()
+    temperatureLabel = tk.Label(text="Temp:        / 80").place(x=10, y=40)
+    temperatureValueLabel = tk.Label(textvariable=tempVal).place(x=50, y=40)
+
+    tempValBed = tk.StringVar()
+    bedTemperatureLabel = tk.Label(text="Temp:        / 60").place(x=10, y=110)
+    bedTemperatureValueLabel = tk.Label(textvariable=tempValBed).place(x=50, y=110)
+
+    ### WIDGETS END ###
 
     root.geometry("480x320")
     connect()
